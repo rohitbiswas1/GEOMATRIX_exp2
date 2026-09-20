@@ -1,8 +1,8 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ShieldCheck, Mail, Lock, LogIn, Map, Sun, Moon, Laptop, Loader2, CheckCircle2 } from 'lucide-react';
+import { ShieldCheck, Map, Sun, Moon, Laptop, Loader2 } from 'lucide-react';
 
 declare global {
   interface Window {
@@ -21,8 +21,6 @@ type ThemeMode = 'system' | 'light' | 'dark';
 
 export default function Login() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [themeMode, setThemeMode] = useState<ThemeMode>('system');
@@ -133,35 +131,6 @@ export default function Login() {
     script.onerror = () => setError('Google sign-in script failed to load.');
     document.head.appendChild(script);
   }, [isGoogleAuthReady, googleClientId, router, effectiveTheme]);
-
-  function persistPrototypeAuth(provider: 'prototype', name: string, emailValue: string) {
-    sessionStorage.setItem(
-      'geomatrix-auth',
-      JSON.stringify({
-        provider,
-        email: emailValue || 'prototype@geomatrix.local',
-        name,
-        signedInAt: new Date().toISOString(),
-      })
-    );
-    router.push('/dashboard');
-  }
-
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const trimmedEmail = email.trim();
-    if (!trimmedEmail || !password.trim()) {
-      setError('Enter a valid email and password to continue.');
-      return;
-    }
-
-    setIsLoading(true);
-    const displayName = trimmedEmail.split('@')[0]
-      .replace(/[._-]+/g, ' ')
-      .replace(/\b\w/g, (char) => char.toUpperCase());
-
-    persistPrototypeAuth('prototype', displayName || 'Prototype Operator', trimmedEmail);
-  }
 
   return (
     <div className={`login-page-wrapper theme-${effectiveTheme}`} data-theme={effectiveTheme}>
@@ -799,75 +768,11 @@ export default function Login() {
             <p>Access the prototype decision support system</p>
           </div>
 
-          <form onSubmit={submit} noValidate>
-            <div className="form-group">
-              <div className="field-unit">
-                <label className="field-label" htmlFor="email-input">
-                  <span>Email address</span>
-                </label>
-                <div className="input-relative">
-                  <input
-                    id="email-input"
-                    type="email"
-                    className="text-input"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="name@geomatrix.gov.in"
-                    autoComplete="username"
-                    required
-                  />
-                  <Mail size={16} className="input-icon" />
-                </div>
-              </div>
-
-              <div className="field-unit">
-                <label className="field-label" htmlFor="password-input">
-                  <span>Password</span>
-                </label>
-                <div className="input-relative">
-                  <input
-                    id="password-input"
-                    type="password"
-                    className="text-input"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    autoComplete="current-password"
-                    required
-                  />
-                  <Lock size={16} className="input-icon" />
-                </div>
-              </div>
+          {error && (
+            <div className="error-alert" role="alert">
+              <span>{error}</span>
             </div>
-
-            {error && (
-              <div className="error-alert" role="alert">
-                <span>{error}</span>
-              </div>
-            )}
-
-            <button
-              type="submit"
-              className="submit-btn"
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 size={16} className="spinner" />
-                  <span>Signing in...</span>
-                </>
-              ) : (
-                <>
-                  <LogIn size={16} />
-                  <span>Sign In to Dashboard</span>
-                </>
-              )}
-            </button>
-          </form>
-
-          <div className="divider-line">
-            <span>or</span>
-          </div>
+          )}
 
           <div className="google-button-wrapper">
             {isGoogleAuthReady ? (
