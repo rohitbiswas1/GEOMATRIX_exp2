@@ -12,6 +12,7 @@ import {
   ApiAlert,
   ModelStatus,
 } from '../../lib/apiClient';
+import CommandCenter from './CommandCenter';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -188,7 +189,7 @@ function StageBar({ projects }: { projects: ApiProject[] }) {
 
 // ── main ──────────────────────────────────────────────────────────────────────
 
-export default function Dashboard() {
+function LegacyDashboard() {
   const [summary, setSummary]     = useState<DashboardSummary | null>(null);
   const [projects, setProjects]   = useState<ApiProject[]>([]);
   const [alerts, setAlerts]       = useState<ApiAlert[]>([]);
@@ -705,3 +706,5 @@ export default function Dashboard() {
     </div>
   );
 }
+
+export default CommandCenter;

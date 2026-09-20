@@ -51,11 +51,13 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const router = useRouter();
   const [q, setQ] = useState('');
-  const [themeMode, setThemeMode] = useState<ThemeMode>('light');
+  const [themeMode, setThemeMode] = useState<ThemeMode>('dark');
   const [roleId, setRoleId] = useState<RoleId>('national');
   const [roleOpen, setRoleOpen] = useState(false);
   const [userInfo, setUserInfo] = useState<{ role?: string; email?: string } | null>(null);
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
+  const [systemStatus, setSystemStatus] = useState<'checking' | 'operational' | 'degraded'>('checking');
+  const [openAlertCount, setOpenAlertCount] = useState<number | null>(null);
 
   const login = path === '/login';
 
@@ -82,6 +84,27 @@ export function Shell({ children }: { children: React.ReactNode }) {
     return () => window.clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    Promise.all([
+      fetch('/api/projects/dashboard-summary', { cache: 'no-store' }),
+      fetch('/api/alerts/summary', { cache: 'no-store' }),
+    ])
+      .then(async ([summaryResponse, alertsResponse]) => {
+        if (!summaryResponse.ok || !alertsResponse.ok) throw new Error('Service health check failed');
+        return Promise.all([summaryResponse.json(), alertsResponse.json()]);
+      })
+      .then(([summary, alertSummary]) => {
+        if (!active) return;
+        setSystemStatus(summary.data_available === false ? 'degraded' : 'operational');
+        setOpenAlertCount(typeof alertSummary.open === 'number' ? alertSummary.open : null);
+      })
+      .catch(() => {
+        if (active) setSystemStatus('degraded');
+      });
+    return () => { active = false; };
+  }, []);
+
   function switchRole(id: RoleId) {
     setRoleId(id);
     setRoleOpen(false);
@@ -94,7 +117,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
     if (saved) {
       setThemeMode(saved);
     } else {
-      setThemeMode('light');
+      setThemeMode('dark');
     }
   }, []);
 
@@ -232,9 +255,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className="topright">
-            <div className="status-badge" title="Automated pipeline active">
+            <div className={`status-badge status-${systemStatus}`} title="Live API service status">
               <span className="pulse-dot" />
-              <span>System Operational</span>
+              <span>{systemStatus === 'operational' ? 'System Operational' : systemStatus === 'degraded' ? 'Service Degraded' : 'Checking Services'}</span>
             </div>
 
             <div className="topbar-date">
@@ -244,12 +267,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
             <button
               className="topbar-icon-btn"
-              title="5 Priority Alerts"
+              title={openAlertCount == null ? 'Priority alerts unavailable' : `${openAlertCount} open priority alerts`}
               onClick={() => router.push('/alerts')}
               aria-label="View alerts"
             >
               <Bell size={15} />
-              <span className="topbar-badge">5</span>
+              {openAlertCount != null && <span className="topbar-badge">{openAlertCount}</span>}
             </button>
 
             <div className="theme-switch-group" role="radiogroup" aria-label="Theme selector">
