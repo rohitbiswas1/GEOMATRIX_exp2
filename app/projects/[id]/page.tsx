@@ -189,13 +189,8 @@ export default function ProjectRiskIntelligence() {
     }
   }, [p]);
 
-  const simulatedRisk = useMemo(() => {
-    const base = p?.risk_score ?? 50;
-    const delta = (simValues.pendingClaims * 2.1) + (simValues.legalCases * 3.4) +
-      ((100 - simValues.docCompleteness) * 0.3) + (simValues.approvalPending ? 8 : 0) + (simValues.rrPending * 1.5);
-    return Math.min(100, Math.max(0, Math.round(base + delta)));
-  }, [simValues, p?.risk_score]);
-  const simDelta = simulatedRisk - (p?.risk_score ?? 50);
+  const simulatedRisk = p?.risk_score ?? null;
+  const simDelta = 0;
   const simDelayDays = null;
   function resetSimulator() { setSimValues(baseline); }
 
@@ -740,20 +735,20 @@ export default function ProjectRiskIntelligence() {
 
           {/* Simulation Results */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div className="panel" style={{ borderLeft: `4px solid ${simulatedRisk >= 75 ? '#dc2626' : simulatedRisk >= 50 ? '#ea580c' : simulatedRisk >= 25 ? '#d97706' : '#15803d'}` }}>
+            <div className="panel" style={{ borderLeft: `4px solid ${(simulatedRisk ?? -1) >= 75 ? '#dc2626' : (simulatedRisk ?? -1) >= 50 ? '#ea580c' : (simulatedRisk ?? -1) >= 25 ? '#d97706' : 'var(--line)'}` }}>
               <div className="paneltitle" style={{ marginBottom: 16 }}>Simulation Result</div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 20, alignItems: 'center', marginBottom: 20 }}>
                 <div style={{ textAlign: 'center' }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 4 }}>Current Risk</div>
-                  <div style={{ fontSize: 48, fontWeight: 900, color: riskColor }}>{riskScore ?? 50}</div>
-                  <RiskBadge score={riskScore ?? 50} />
+                  <div style={{ fontSize: 48, fontWeight: 900, color: riskColor }}>{riskScore ?? 'Unavailable'}</div>
+                  {riskScore != null && <RiskBadge score={riskScore} />}
                 </div>
                 <div style={{ textAlign: 'center', fontSize: 24, color: 'var(--muted)' }}>→</div>
                 <div style={{ textAlign: 'center' }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 4 }}>Simulated Risk</div>
-                  <div style={{ fontSize: 48, fontWeight: 900, color: RISK_COLORS[riskLevel(simulatedRisk)] }}>{simulatedRisk}</div>
-                  <RiskBadge score={simulatedRisk} />
+                  <div style={{ fontSize: 48, fontWeight: 900, color: simulatedRisk == null ? 'var(--muted)' : RISK_COLORS[riskLevel(simulatedRisk)] }}>{simulatedRisk ?? 'Unavailable'}</div>
+                  {simulatedRisk != null && <RiskBadge score={simulatedRisk} />}
                 </div>
               </div>
 

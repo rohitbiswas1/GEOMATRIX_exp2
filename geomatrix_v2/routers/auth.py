@@ -1,4 +1,5 @@
 """Geomatrix v2 Auth Router"""
+import os
 import secrets
 from fastapi import APIRouter, Response, HTTPException
 from pydantic import BaseModel
@@ -66,7 +67,7 @@ def google_callback(code: str | None = None, state: str | None = None, error: st
         "message": "Google OAuth callback received.",
         "code": code,
         "state": state,
-        "redirect_to": "http://127.0.0.1:3000",
+        "redirect_to": os.getenv("NEXT_PUBLIC_APP_URL", "/"),
     }
 
 

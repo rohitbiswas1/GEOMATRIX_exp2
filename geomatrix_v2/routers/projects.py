@@ -237,6 +237,21 @@ def get_explanation(project_id: str, db: Session = Depends(get_db)):
     return {"project_id": project_id, "shap_features": shap_features}
 
 
+@router.get("/{project_id}/explanation")
+def get_explanation_alias(project_id: str, db: Session = Depends(get_db)):
+    return get_explanation(project_id, db)
+
+
+@router.get("/{project_id}/recommendations")
+def get_recommendations_alias(project_id: str, db: Session = Depends(get_db)):
+    return get_explanation(project_id, db)
+
+
+@router.post("/{project_id}/risk")
+def predict_risk_alias(project_id: str, db: Session = Depends(get_db)):
+    return predict_risk(project_id, db)
+
+
 @router.get("/{project_id}/predictions")
 def list_predictions(project_id: str, db: Session = Depends(get_db)):
     """Return prediction history for a project."""

@@ -9,5 +9,8 @@ export async function POST(req:Request){
   if(!(file instanceof File))return NextResponse.json({error:'A document file is required'},{status:400});
   if(file.size>maxFileSize)return NextResponse.json({error:'Document must be 10 MB or smaller'},{status:413});
   if(!allowedTypes.has(file.type))return NextResponse.json({error:'Only PDF, JPEG, and PNG documents are supported'},{status:415});
-  return NextResponse.json({mode:'mock',message:'Document accepted for simulated OCR/NLP extraction',fileName:file.name,extracted:{documentType:'Compensation Document',projectId:'NH-112-MAL-01',riskIndicators:['pending verification','signature review']}});
+  return NextResponse.json(
+    { error: 'Document extraction is unavailable until persistent document storage and processing are configured.' },
+    { status: 501 },
+  );
 }

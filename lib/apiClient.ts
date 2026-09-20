@@ -1,11 +1,11 @@
 /**
  * Geomatrix API Client
  * Typed fetch client for all FastAPI backend calls.
- * Uses NEXT_PUBLIC_API_URL (default: http://127.0.0.1:8000).
+ * Uses same-origin /api routes in the browser and during server rendering.
  * All functions here are the real-data replacements for lib/data.ts exports.
  */
 
-const BASE = typeof window !== 'undefined' ? '' : (process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:8000');
+const BASE = '';
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {

@@ -1,19 +1,28 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { demoProjects } from '../../../_demo-data';
 
-const BACKEND = process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:8000';
-
-export async function POST(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const upstream = await fetch(`${BACKEND}/api/projects/${encodeURIComponent(id)}/predict-risk`, {
-    method: 'POST',
-    headers: { Accept: 'application/json' },
-  });
-  const payload = await upstream.text();
+  const project = demoProjects.find((item) => item.id === id || item.project_code === id);
 
-  if (!upstream.ok) {
-    let parsed: unknown = payload ? (() => { try { return JSON.parse(payload); } catch { return payload; } })() : { error: 'Prediction failed.' };
-    return NextResponse.json(typeof parsed === 'object' && parsed ? parsed : { error: 'Prediction failed.' }, { status: upstream.status });
+  if (!project) {
+    return NextResponse.json({ message: 'Project not found' }, { status: 404 });
   }
 
-  return NextResponse.json(payload ? JSON.parse(payload) : {}, { status: upstream.status });
+  const risk_score = project.risk_score ?? 50;
+  const risk_level = project.risk_level ?? 'Medium';
+  const delay_probability = project.delay_probability ?? 0.45;
+  const predicted_delay_days = project.predicted_delay_days ?? 15;
+  const confidence = project.confidence ?? 0.8;
+
+  return NextResponse.json({
+    project_id: project.id,
+    status: 'success',
+    risk_score,
+    risk_level,
+    delay_probability,
+    predicted_delay_days,
+    confidence,
+    message: 'Latest risk summary loaded from demo project data.',
+  });
 }

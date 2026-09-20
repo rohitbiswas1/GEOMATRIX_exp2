@@ -24,6 +24,20 @@ import { useEffect, useState } from 'react';
 
 type ThemeMode = 'system' | 'light' | 'dark';
 
+function formatIndiaDateTime(date: Date) {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Kolkata',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+  return `${values.day} ${values.month} ${values.year} · ${values.hour}:${values.minute} IST`;
+}
+
 const ROLES = [
   { id: 'national', label: 'National Administrator', scope: 'All states & districts' },
   { id: 'state', label: 'State Officer', scope: 'West Bengal' },
@@ -41,6 +55,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [roleId, setRoleId] = useState<RoleId>('national');
   const [roleOpen, setRoleOpen] = useState(false);
   const [userInfo, setUserInfo] = useState<{ role?: string; email?: string } | null>(null);
+  const [currentTime, setCurrentTime] = useState<Date | null>(null);
 
   const login = path === '/login';
 
@@ -59,6 +74,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const savedRole = sessionStorage.getItem('geomatrix-role') as RoleId | null;
     if (savedRole && ROLES.find(r => r.id === savedRole)) setRoleId(savedRole);
+  }, []);
+
+  useEffect(() => {
+    setCurrentTime(new Date());
+    const timer = window.setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => window.clearInterval(timer);
   }, []);
 
   function switchRole(id: RoleId) {
@@ -218,7 +239,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
             <div className="topbar-date">
               <Clock size={13} />
-              <span>07 Sep 2026 · 20:45 IST</span>
+              <span>{currentTime ? formatIndiaDateTime(currentTime) : '—'}</span>
             </div>
 
             <button

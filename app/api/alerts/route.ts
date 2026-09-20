@@ -1,15 +1,16 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { demoAlerts } from '../_demo-data';
 
-const BACKEND = process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:8000';
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const statusFilter = searchParams.get('status');
+  const limitParam = Number(searchParams.get('limit') ?? '100');
 
-export async function GET(req: NextRequest) {
-  try {
-    const status = req.nextUrl.searchParams.get('status') ?? 'Open';
-    const limit = req.nextUrl.searchParams.get('limit') ?? '100';
-    const res = await fetch(`${BACKEND}/api/alerts?status=${status}&limit=${limit}`);
-    const data = await res.json();
-    return NextResponse.json(data, { status: res.status });
-  } catch (err) {
-    return NextResponse.json([], { status: 200 });
+  let alerts = [...demoAlerts];
+  if (statusFilter && statusFilter.toLowerCase() !== 'all') {
+    alerts = alerts.filter((alert) => alert.status.toLowerCase() === statusFilter.toLowerCase());
   }
+
+  const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(limitParam, 1000) : 100;
+  return NextResponse.json(alerts.slice(0, limit));
 }

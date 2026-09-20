@@ -1,19 +1,41 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { demoProjects } from '../../../_demo-data';
 
-const BACKEND = process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:8000';
-
-export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const upstream = await fetch(`${BACKEND}/api/projects/${encodeURIComponent(id)}/explain`, {
-    headers: { Accept: 'application/json' },
-  });
-  const payload = await upstream.text();
+  const project = demoProjects.find((item) => item.id === id || item.project_code === id);
 
-  if (!upstream.ok) {
-    let parsed: unknown = payload ? (() => { try { return JSON.parse(payload); } catch { return payload; } })() : { error: 'Recommendations unavailable.' };
-    return NextResponse.json(typeof parsed === 'object' && parsed ? parsed : { error: 'Recommendations unavailable.' }, { status: upstream.status });
+  if (!project) {
+    return NextResponse.json({ message: 'Project not found' }, { status: 404 });
   }
 
-  const json = payload ? JSON.parse(payload) : { shap_features: [] };
-  return NextResponse.json({ data: json.shap_features ?? [] }, { status: upstream.status });
+  const recommendations = [
+    {
+      title: 'Escalate pending compensation approvals',
+      priority: project.compensation_status === 'Pending' ? 'Critical' : 'High',
+      impact: 'Very High',
+      owner: 'District Land Acquisition Officer',
+      expected: 'Reduce delay probability and improve award confidence.',
+    },
+    {
+      title: 'Resolve pending legal and statutory clearances',
+      priority: project.legal_case_count && project.legal_case_count > 5 ? 'High' : 'Medium',
+      impact: 'High',
+      owner: 'Legal & Regulatory Cell',
+      expected: 'Limit litigation-driven schedule shocks.',
+    },
+    {
+      title: 'Tighten document verification and hearing coordination',
+      priority: 'Medium',
+      impact: 'Moderate',
+      owner: 'Project Coordination Office',
+      expected: 'Increase document completeness and speed up hearing windows.',
+    },
+  ];
+
+  return NextResponse.json({
+    project_id: project.id,
+    recommendations,
+    status: 'success',
+  });
 }

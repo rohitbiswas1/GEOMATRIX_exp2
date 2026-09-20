@@ -1,13 +1,11 @@
 import { NextResponse } from 'next/server';
-
-const BACKEND = process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:8000';
+import { demoAlerts } from '../../_demo-data';
 
 export async function GET() {
-  try {
-    const res = await fetch(`${BACKEND}/api/alerts/summary`);
-    const data = await res.json();
-    return NextResponse.json(data, { status: res.status });
-  } catch (err) {
-    return NextResponse.json({ total: 0, open: 0, critical: 0, high: 0 }, { status: 200 });
-  }
+  const total = demoAlerts.length;
+  const open = demoAlerts.filter((item) => item.status === 'Open').length;
+  const critical = demoAlerts.filter((item) => item.severity === 'Critical').length;
+  const high = demoAlerts.filter((item) => item.severity === 'High').length;
+
+  return NextResponse.json({ total, open, critical, high });
 }

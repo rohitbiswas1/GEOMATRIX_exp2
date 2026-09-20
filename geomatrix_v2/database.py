@@ -1,4 +1,7 @@
-"""Database session factory for Geomatrix v2 (SQLite)."""
+"""Database session factory for Geomatrix v2.
+
+SQLite remains the local default; production must provide DATABASE_URL.
+"""
 import os
 import logging
 from sqlalchemy import create_engine, text
@@ -9,7 +12,7 @@ from models import Base
 logger = logging.getLogger(__name__)
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "geomatrix.db")
-DATABASE_URL = f"sqlite:///{DB_PATH}"
+DATABASE_URL = os.getenv("DATABASE_URL") or f"sqlite:///{DB_PATH}"
 
 
 class _DynamicEngine:
@@ -20,21 +23,18 @@ class _DynamicEngine:
 
     def _ensure_engine(self):
         current_url = globals().get("DATABASE_URL", DATABASE_URL)
+        is_sqlite = current_url.startswith("sqlite")
+        engine_options = {"echo": False}
+        if is_sqlite:
+            engine_options.update({
+                "connect_args": {"check_same_thread": False},
+                "poolclass": StaticPool,
+            })
         if self._engine is None:
-            self._engine = create_engine(
-                current_url,
-                connect_args={"check_same_thread": False},
-                poolclass=StaticPool,
-                echo=False,
-            )
+            self._engine = create_engine(current_url, **engine_options)
         elif str(self._engine.url) != current_url:
             self._engine.dispose()
-            self._engine = create_engine(
-                current_url,
-                connect_args={"check_same_thread": False},
-                poolclass=StaticPool,
-                echo=False,
-            )
+            self._engine = create_engine(current_url, **engine_options)
         return self._engine
 
     def __getattr__(self, name):

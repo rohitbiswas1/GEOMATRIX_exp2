@@ -1,1 +1,8 @@
-import {NextResponse} from 'next/server';export async function GET(){return NextResponse.json({totalProjects:128,critical:12,high:27,medium:43,low:46,avgDelayProbability:.384,exposureCr:286,atRiskParcels:4821})}
+import { NextResponse } from 'next/server';
+
+export async function GET() {
+	return NextResponse.json(
+		{ error: 'Analytics require real project records in the database.' },
+		{ status: 503 },
+	);
+}
