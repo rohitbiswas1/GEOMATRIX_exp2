@@ -7,7 +7,7 @@ import { Bell, CheckCircle2, AlertTriangle, AlertCircle, Filter, RotateCcw, Arro
 
 type AlertRow = {
   id: string;
-  severity: 'Critical' | 'High' | 'Medium';
+  severity: 'Critical' | 'High' | 'Medium' | 'Low';
   project: string;
   projectId: string;
   reason: string;
@@ -35,13 +35,13 @@ export default function AlertsPage() {
         const apiAlerts = await fetchAlerts('All', 100);
         const mapped: AlertRow[] = (apiAlerts ?? []).map(a => ({
           id: a.id,
-          severity: (a.severity as any) || 'Medium',
+          severity: (a.severity as AlertRow['severity']) || 'Medium',
           project: a.project_name || a.project_id,
           projectId: a.project_id,
           reason: a.reason,
-          riskDelta: '+0% shift',
-          riskChange: 0,
-          expectedImpact: 'No forecast available',
+          riskDelta: `+${a.risk_change ?? 0}% shift`,
+          riskChange: a.risk_change ?? 0,
+          expectedImpact: a.expected_impact || 'No verified impact available',
           cause: a.reason,
           detected: new Date(a.detected_at).toLocaleDateString('en-IN'),
           action: a.recommended_action || 'Review intervention queue',
@@ -80,7 +80,7 @@ export default function AlertsPage() {
   }
 
   function doAssign() {
-    if (!assignModal) return;
+    if (!assignModal || assignModal.status !== 'Acknowledged') return;
     update(assignModal.id, { assignedTo: assignToField, dueDate: dueDateField, status: 'Acknowledged' });
     showToast(`Alert assigned to ${assignToField}`);
     setAssignModal(null);
@@ -96,8 +96,10 @@ export default function AlertsPage() {
     critical: rows.filter(a => a.severity === 'Critical').length,
     high: rows.filter(a => a.severity === 'High').length,
     medium: rows.filter(a => a.severity === 'Medium').length,
+    low: rows.filter(a => a.severity === 'Low').length,
     open: rows.filter(a => a.status === 'Open').length,
     ack: rows.filter(a => a.status === 'Acknowledged').length,
+    monitoring: rows.filter(a => a.status === 'Monitoring').length,
     resolved: rows.filter(a => a.status === 'Resolved').length,
   }), [rows]);
 
@@ -141,15 +143,17 @@ export default function AlertsPage() {
           ['Critical', counts.critical, 'kpi kpi-critical', 'Critical'],
           ['High', counts.high, 'kpi kpi-high', 'High'],
           ['Medium', counts.medium, 'kpi kpi-medium', 'Medium'],
+          ['Low', counts.low, 'kpi kpi-low', 'Low'],
           ['Open', counts.open, 'kpi', 'Open'],
           ['Acknowledged', counts.ack, 'kpi kpi-medium', 'Acknowledged'],
+          ['Monitoring', counts.monitoring, 'kpi kpi-medium', 'Monitoring'],
           ['Resolved', counts.resolved, 'kpi kpi-low', 'Resolved'],
         ] as [string, number, string, string][]).map(([label, val, cls, filter]) => (
           <div
             key={label} className={cls}
             style={{ cursor: 'pointer', outline: (severityFilter === filter || statusFilter === filter) ? '2px solid var(--blue)' : 'none' }}
             onClick={() => {
-              if (['Critical', 'High', 'Medium'].includes(filter)) setSeverityFilter(severityFilter === filter ? 'All' : filter);
+              if (['Critical', 'High', 'Medium', 'Low'].includes(filter)) setSeverityFilter(severityFilter === filter ? 'All' : filter);
               else setStatusFilter(statusFilter === filter ? 'All' : filter);
             }}
           >
@@ -167,13 +171,13 @@ export default function AlertsPage() {
           <div className="filter-item">
             <label className="filter-label">Severity</label>
             <select className="filter-select" value={severityFilter} onChange={e => setSeverityFilter(e.target.value)}>
-              <option>All</option><option>Critical</option><option>High</option><option>Medium</option>
+              <option>All</option><option>Critical</option><option>High</option><option>Medium</option><option>Low</option>
             </select>
           </div>
           <div className="filter-item">
             <label className="filter-label">Status</label>
             <select className="filter-select" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
-              <option>All</option><option>Open</option><option>Acknowledged</option><option>Resolved</option>
+              <option>All</option><option>Open</option><option>Acknowledged</option><option>Monitoring</option><option>Resolved</option>
             </select>
           </div>
           {(severityFilter !== 'All' || statusFilter !== 'All') && (
@@ -251,8 +255,8 @@ export default function AlertsPage() {
                     </td>
                     <td onClick={e => e.stopPropagation()}>
                       <div className="actions" style={{ gap: 5, flexWrap: 'nowrap' }}>
-                        {a.status === 'Open' && (
-                          <button className="btn" style={{ padding: '6px 10px', fontSize: 12 }}
+                        {a.status !== 'Resolved' && (
+                          <button className="btn" style={{ padding: '6px 10px', fontSize: 12 }} disabled={a.status !== 'Acknowledged'} title={a.status === 'Acknowledged' ? 'Assign this acknowledged alert' : 'Acknowledge the alert before assigning'}
                             onClick={() => { setAssignModal(a); setAssignToField(''); setDueDateField(''); }}>
                             <User size={11} /> Assign
                           </button>
@@ -336,6 +340,8 @@ export default function AlertsPage() {
 
             <div className="actions" style={{ flexDirection: 'column', marginTop: 14 }}>
               <button className="btn" style={{ width: '100%', justifyContent: 'center' }}
+                disabled={selected.status !== 'Acknowledged'}
+                title={selected.status === 'Acknowledged' ? 'Assign this acknowledged alert' : 'Acknowledge the alert before assigning'}
                 onClick={() => { setAssignModal(selected); setAssignToField(selected.assignedTo || ''); setDueDateField(selected.dueDate || ''); }}>
                 <User size={14} /> Assign to Officer
               </button>

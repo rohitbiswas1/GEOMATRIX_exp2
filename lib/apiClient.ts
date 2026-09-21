@@ -5,7 +5,7 @@
  * All functions here are the real-data replacements for lib/data.ts exports.
  */
 
-const BASE = '';
+const BASE = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '');
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
@@ -14,7 +14,9 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const body = await res.text();
-    throw new ApiError(res.status, body);
+    let message = body;
+    try { message = (JSON.parse(body) as { error?: string }).error || body; } catch { /* preserve non-JSON API errors */ }
+    throw new ApiError(res.status, message);
   }
   return res.json() as Promise<T>;
 }
@@ -25,7 +27,7 @@ export class ApiError extends Error {
   }
 }
 
-// ── Types ──────────────────────────────────────────────────────────────────────
+// â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface ApiProject {
   id: string;
@@ -140,12 +142,16 @@ export interface ApiAlert {
   project_name?: string;
   severity: string;
   reason: string;
+  risk_change?: number;
+  expected_impact?: string;
   detected_at: string;
   recommended_action?: string;
   status: string;
 }
 
 export interface IngestResult {
+  missing_fields?: number;
+  completeness_pct?: number;
   source: string;
   records_fetched: number;
   records_saved: number;
@@ -212,7 +218,7 @@ export interface ProjectValidation {
   message: string;
 }
 
-// ── Project endpoints ──────────────────────────────────────────────────────────
+// â”€â”€ Project endpoints â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function fetchProjects(params?: {
   state?: string;
@@ -264,13 +270,13 @@ export async function fetchExplanation(projectId: string): Promise<{ project_id:
   return apiFetch(`/api/projects/${projectId}/explain`);
 }
 
-// ── Dashboard ─────────────────────────────────────────────────────────────────
+// â”€â”€ Dashboard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function fetchDashboardSummary(): Promise<DashboardSummary> {
   return apiFetch<DashboardSummary>('/api/projects/dashboard-summary');
 }
 
-// ── Alerts ────────────────────────────────────────────────────────────────────
+// â”€â”€ Alerts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function fetchAlerts(status = 'Open', limit = 100): Promise<ApiAlert[]> {
   return apiFetch<ApiAlert[]>(`/api/alerts?status=${status}&limit=${limit}`);
@@ -280,14 +286,14 @@ export async function fetchAlertsSummary() {
   return apiFetch<{ total: number; open: number; critical: number; high: number }>('/api/alerts/summary');
 }
 
-// ── GIS Map ───────────────────────────────────────────────────────────────────
+// â”€â”€ GIS Map â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function fetchGeojson(riskLevel?: string): Promise<GeoJsonFeatureCollection> {
   const qs = riskLevel ? `?risk_level=${riskLevel}` : '';
   return apiFetch<GeoJsonFeatureCollection>(`/api/map/geojson${qs}`);
 }
 
-// ── Data Ingestion ────────────────────────────────────────────────────────────
+// â”€â”€ Data Ingestion â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function uploadFile(file: File, dataType: 'projects' | 'historical'): Promise<IngestResult> {
   const form = new FormData();
@@ -298,7 +304,9 @@ export async function uploadFile(file: File, dataType: 'projects' | 'historical'
   });
   if (!res.ok) {
     const body = await res.text();
-    throw new ApiError(res.status, body);
+    let message = body;
+    try { message = (JSON.parse(body) as { error?: string }).error || body; } catch { /* preserve non-JSON API errors */ }
+    throw new ApiError(res.status, message);
   }
   return res.json() as Promise<IngestResult>;
 }
@@ -307,7 +315,7 @@ export async function fetchIngestionLog(limit = 20): Promise<IngestionLogEntry[]
   return apiFetch<IngestionLogEntry[]>(`/api/ingest/log?limit=${limit}`);
 }
 
-// ── Model ─────────────────────────────────────────────────────────────────────
+// â”€â”€ Model â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function fetchModelStatus(): Promise<ModelStatus> {
   return apiFetch<ModelStatus>('/api/model/status');
@@ -321,7 +329,7 @@ export async function trainModel(algorithm: 'RandomForest' | 'XGBoost' = 'Random
   return apiFetch<TrainResponse>(`/api/model/train?algorithm=${algorithm}`, { method: 'POST' });
 }
 
-// ── Gemini (server-side proxy route in Next.js) ───────────────────────────────
+// â”€â”€ Gemini (server-side proxy route in Next.js) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function explainWithGemini(payload: {
   project: Record<string, unknown>;
@@ -336,7 +344,10 @@ export async function explainWithGemini(payload: {
   });
   if (!res.ok) {
     const body = await res.text();
-    throw new ApiError(res.status, body);
+    let message = body;
+    try { message = (JSON.parse(body) as { error?: string }).error || body; } catch { /* preserve non-JSON API errors */ }
+    throw new ApiError(res.status, message);
   }
   return res.json();
 }
+

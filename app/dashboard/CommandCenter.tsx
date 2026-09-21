@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import {
   Activity,
@@ -37,6 +38,9 @@ const riskClass: Record<string, string> = {
   Low: 'risk-low',
 };
 
+const pipelineStages = ['Notification', 'Objection / Hearing', 'Compensation', 'Award', 'Possession'];
+const DashboardRiskMap = dynamic(() => import('../../components/DashboardRiskMap'), { ssr: false });
+
 function unavailable(value: unknown) {
   return value === null || value === undefined || value === '' ? 'No verified data available' : String(value);
 }
@@ -55,6 +59,13 @@ function formatDate(value?: string) {
 
 function severityClass(value?: string) {
   return riskClass[value ?? ''] ?? 'risk-unknown';
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs = 8000) {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => window.setTimeout(() => reject(new Error('Dashboard request timed out')), timeoutMs)),
+  ]);
 }
 
 function StatCard({ label, value, detail, icon: Icon, tone = 'blue' }: {
@@ -92,10 +103,10 @@ export default function CommandCenter() {
     setRefreshing(true);
     setLoadError(false);
     const results = await Promise.allSettled([
-      fetchDashboardSummary(),
-      fetchProjects({ limit: 100 }),
-      fetchAlerts('Open', 20),
-      fetchModelStatus(),
+      withTimeout(fetchDashboardSummary()),
+      withTimeout(fetchProjects({ limit: 100 })),
+      withTimeout(fetchAlerts('Open', 20)),
+      withTimeout(fetchModelStatus()),
     ]);
     let received = 0;
     results.forEach((result, index) => {
@@ -148,117 +159,57 @@ export default function CommandCenter() {
     ['F1 score', model?.f1_score],
     ['ROC-AUC', model?.roc_auc],
   ];
+  const riskTotal = (derived.critical ?? 0) + (derived.high ?? 0) + (derived.medium ?? 0) + (derived.low ?? 0);
+  const riskPercent = (value: number | null) => riskTotal > 0 && value != null ? (value / riskTotal) * 100 : 0;
 
   return (
     <div className="command-page">
-      <section className="command-hero">
-        <div>
-          <div className="command-kicker"><Activity size={14} /> National land acquisition monitoring</div>
-          <h1>Decision support command center</h1>
-          <p>Evidence-led oversight for project risk, acquisition progress, and intervention priorities.</p>
+      <section className="command-reference-hero">
+        <div className="command-hero-copy">
+          <div className="command-kicker"><Activity size={14} /> Government infrastructure intelligence</div>
+          <h1>Welcome to <span>GEOMATRIX</span></h1>
+          <p>Predictive intelligence for early detection of land acquisition delays</p>
+          <div className="command-hero-tags"><span>AI-powered</span><span>Data-driven</span><span>Government ready</span><span>Real impact</span></div>
         </div>
-        <div className="command-actions">
-          <span className="command-refresh">{lastRefresh ? `Updated ${lastRefresh.toLocaleTimeString('en-IN')}` : 'Awaiting data'}</span>
-          <button className="command-button command-button-secondary" onClick={() => void load()} disabled={refreshing}>
-            <RefreshCw size={15} className={refreshing ? 'command-spin' : ''} /> {refreshing ? 'Refreshing' : 'Refresh data'}
-          </button>
-          <Link className="command-button command-button-primary" href="/reports">Open report <ArrowUpRight size={15} /></Link>
-        </div>
+        <div className="command-hero-slogan">Infrastructure<br />today.<br /><strong>A stronger India<br />tomorrow.</strong></div>
       </section>
 
       {loadError && <div className="command-system-warning"><AlertTriangle size={17} /> Data services did not return a verified response. Values below are withheld.</div>}
-
-      {loading ? (
-        <div className="command-loading"><RefreshCw size={18} className="command-spin" /> Loading verified portfolio data</div>
-      ) : (
+      {loading ? <div className="command-loading"><RefreshCw size={18} className="command-spin" /> Loading verified portfolio data</div> : (
         <>
-          <section className="command-stat-grid" aria-label="Portfolio summary">
-            <StatCard label="Monitored projects" value={formatNumber(derived.totalProjects)} detail="Current API portfolio" icon={Target} />
-            <StatCard label="Open interventions" value={formatNumber(summary?.alerts_open ?? (alerts.length || null))} detail="Alerts requiring review" icon={AlertTriangle} tone="red" />
-            <StatCard label="Land required" value={summary?.total_land_ha != null ? `${summary.total_land_ha.toLocaleString('en-IN')} ha` : 'No verified data available'} detail="Reported acquisition area" icon={MapPinned} tone="amber" />
-            <StatCard label="Affected families" value={formatNumber(summary?.total_families ?? (projects.length ? projects.reduce((total, project) => total + (project.affected_families ?? 0), 0) : null))} detail="Reported stakeholder count" icon={Users} tone="cyan" />
-            <StatCard label="Overdue milestones" value={formatNumber(derived.overdue)} detail="Derived from project records" icon={Clock3} tone="red" />
-            <StatCard label="Legal cases" value={formatNumber(derived.legal)} detail="Reported active disputes" icon={FileCheck2} tone="purple" />
+          <section className="command-reference-kpis" aria-label="Portfolio summary">
+            <StatCard label="Total projects" value={formatNumber(derived.totalProjects)} detail="Current API portfolio" icon={Target} />
+            <StatCard label="Completed" value={derived.totalProjects != null && derived.overdue != null ? formatNumber(Math.max(0, derived.totalProjects - derived.overdue)) : 'No verified data available'} detail="Derived from milestones" icon={CheckCircle2} tone="green" />
+            <StatCard label="At risk" value={formatNumber((derived.critical ?? 0) + (derived.high ?? 0) || null)} detail="Critical and high risk" icon={Clock3} tone="amber" />
+            <StatCard label="Open interventions" value={formatNumber(summary?.alerts_open ?? (alerts.length || null))} detail="Require attention" icon={AlertTriangle} tone="red" />
           </section>
 
-          <section className="command-primary-grid">
-            <article className="command-panel command-risk-panel">
-              <div className="command-panel-heading">
-                <div><span className="command-overline">Portfolio exposure</span><h2>Risk triage</h2></div>
-                <Gauge size={20} />
-              </div>
-              <div className="command-risk-total">
-                <strong>{derived.totalProjects ? formatNumber(derived.totalProjects) : 'No verified data available'}</strong>
-                <span>projects in current portfolio</span>
-              </div>
-              <div className="command-risk-rows">
-                {riskRows.map(({ label, value, icon: Icon }) => (
-                  <div className="command-risk-row" key={label}>
-                    <span className={`command-risk-icon ${severityClass(label)}`}><Icon size={15} /></span>
-                    <span className="command-risk-label">{label}</span>
-                    <div className="command-risk-track"><span className={severityClass(label)} style={{ width: `${derived.totalProjects && value != null ? Math.min(100, (value / derived.totalProjects) * 100) : 0}%` }} /></div>
-                    <strong>{value == null ? 'N/A' : value}</strong>
-                  </div>
-                ))}
-              </div>
-              <div className="command-panel-foot">Counts are sourced from the dashboard summary or current project records.</div>
+          <section className="command-reference-grid">
+            <article className="command-panel command-map-panel">
+              <div className="command-panel-heading"><div><span className="command-overline">Spatial oversight</span><h2>Project risk map</h2></div><Link href="/map" className="command-text-link">View full map <ArrowUpRight size={14} /></Link></div>
+              <DashboardRiskMap projects={projects} />
             </article>
 
-            <article className="command-panel command-alert-panel">
-              <div className="command-panel-heading">
-                <div><span className="command-overline">Action queue</span><h2>Priority interventions</h2></div>
-                <Link href="/alerts" className="command-text-link">View all <ArrowUpRight size={14} /></Link>
-              </div>
-              {alerts.length === 0 ? <EmptyState /> : (
-                <div className="command-alert-list">
-                  {alerts.slice(0, 4).map((alert) => (
-                    <Link href={`/projects/${alert.project_id}`} className="command-alert-item" key={alert.id}>
-                      <span className={`command-severity ${severityClass(alert.severity)}`}>{alert.severity}</span>
-                      <span className="command-alert-copy"><strong>{unavailable(alert.project_name)}</strong><span>{alert.reason}</span></span>
-                      <ArrowUpRight size={15} />
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </article>
+            <div className="command-reference-middle">
+              <article className="command-panel command-distribution-panel">
+                <div className="command-panel-heading"><div><span className="command-overline">Portfolio exposure</span><h2>Risk distribution</h2></div><Gauge size={19} /></div>
+                <div className="command-distribution"><div className="command-donut-wrap"><div className="command-donut" style={{ '--critical-pct': `${riskPercent(derived.critical)}%`, '--high-pct': `${riskPercent(derived.high)}%`, '--medium-pct': `${riskPercent(derived.medium)}%`, '--low-pct': `${riskPercent(derived.low)}%` } as React.CSSProperties}><strong>{formatNumber(derived.totalProjects)}</strong></div><span>Total projects</span></div><div className="command-distribution-legend">{riskRows.map(({ label, value }) => <div key={label}><i className={`risk-dot ${severityClass(label)}`} /><span>{label}</span><strong>{value == null || !derived.totalProjects ? 'N/A' : `${Math.round((value / derived.totalProjects) * 100)}%`}</strong></div>)}</div></div>
+              </article>
+              <article className="command-panel command-timeline-panel">
+                <div className="command-panel-heading"><div><span className="command-overline">Operational flow</span><h2>Acquisition pipeline</h2></div><Link href="/projects" className="command-text-link">View details <ArrowUpRight size={14} /></Link></div>
+                <div className="command-reference-timeline">{pipelineStages.map((stage) => <div key={stage} className="command-timeline-step"><span className="command-timeline-node" /><strong>{derived.stages[stage] ?? 0}</strong><small>{stage}</small></div>)}</div>
+              </article>
+            </div>
+
+            <aside className="command-reference-aside">
+              <article className="command-panel command-insights-panel"><div className="command-panel-heading"><div><span className="command-overline">Decision queue</span><h2>AI insights</h2></div><Link href="/alerts" className="command-text-link">View all <ArrowUpRight size={14} /></Link></div>{alerts.length === 0 ? <EmptyState /> : <div className="command-insight-list">{alerts.slice(0, 3).map((alert) => <Link href={`/projects/${alert.project_id}`} key={alert.id} className="command-insight"><span className={`command-insight-icon ${severityClass(alert.severity)}`}><AlertTriangle size={15} /></span><span><strong>{unavailable(alert.project_name)}</strong><small>{alert.reason}</small><em>{formatDate(alert.detected_at)}</em></span></Link>)}</div>}</article>
+              <article className="command-panel command-actions-panel"><div className="command-panel-heading"><div><span className="command-overline">Workflow</span><h2>Quick actions</h2></div></div><div className="command-quick-actions"><Link href="/projects"><Target size={15} /> Project register</Link><Link href="/reports"><FileCheck2 size={15} /> Generate report</Link><Link href="/analytics"><Activity size={15} /> Run analysis</Link><Link href="/data"><Database size={15} /> Upload dataset</Link></div></article>
+            </aside>
           </section>
 
-          <section className="command-secondary-grid">
-            <article className="command-panel">
-              <div className="command-panel-heading"><div><span className="command-overline">Operational flow</span><h2>Acquisition pipeline</h2></div><Database size={20} /></div>
-              {Object.keys(derived.stages).length === 0 ? <EmptyState /> : (
-                <div className="command-stage-list">
-                  {Object.entries(derived.stages).sort(([, a], [, b]) => b - a).map(([stage, count]) => (
-                    <div className="command-stage-row" key={stage}><span>{stage}</span><div className="command-stage-track"><span style={{ width: `${derived.totalProjects ? (count / derived.totalProjects) * 100 : 0}%` }} /></div><strong>{count}</strong></div>
-                  ))}
-                </div>
-              )}
-              <div className="command-panel-foot">Only stages returned by the project service are shown.</div>
-            </article>
-
-            <article className="command-panel">
-              <div className="command-panel-heading"><div><span className="command-overline">Explainability & provenance</span><h2>Model readiness</h2></div><Activity size={20} /></div>
-              {model ? (
-                <>
-                  <div className={`command-model-status ${model.trained ? 'is-ready' : 'is-pending'}`}><span>{model.trained ? 'Model active' : 'Model not trained'}</span><strong>{unavailable(model.algorithm)}</strong></div>
-                  <div className="command-model-grid">
-                    {modelMetrics.map(([label, value]) => <div key={label}><span>{label}</span><strong>{value == null ? 'Not available' : `${(value as number * 100).toFixed(1)}%`}</strong></div>)}
-                  </div>
-                  <p className="command-panel-foot">{unavailable(model.message)}</p>
-                </>
-              ) : <EmptyState />}
-            </article>
-          </section>
-
-          <section className="command-panel command-table-panel">
-            <div className="command-panel-heading"><div><span className="command-overline">Verified records</span><h2>Highest reported risk</h2></div><Link href="/projects" className="command-text-link">Open project register <ArrowUpRight size={14} /></Link></div>
-            {atRiskProjects.length === 0 ? <EmptyState /> : (
-              <div className="command-table-wrap">
-                <table className="command-table"><thead><tr><th>Project</th><th>Authority</th><th>Stage</th><th>Risk</th><th>Last updated</th><th /></tr></thead><tbody>
-                  {atRiskProjects.map((project) => <tr key={project.id}><td><strong>{project.name}</strong><span>{project.project_code} · {project.state}</span></td><td>{unavailable(project.authority)}</td><td>{unavailable(project.current_stage)}</td><td><span className={`command-severity ${severityClass(project.risk_level)}`}>{project.risk_score == null ? 'Not available' : `${project.risk_score.toFixed(0)} · ${project.risk_level ?? 'Unclassified'}`}</span></td><td>{formatDate(project.updated_at)}</td><td><Link href={`/projects/${project.id}`} aria-label={`Open ${project.name}`}><ArrowUpRight size={16} /></Link></td></tr>)}
-                </tbody></table>
-              </div>
-            )}
+          <section className="command-reference-bottom">
+            <article className="command-panel command-table-panel"><div className="command-panel-heading"><div><span className="command-overline">Verified records</span><h2>Recent projects</h2></div><Link href="/projects" className="command-text-link">View all <ArrowUpRight size={14} /></Link></div>{atRiskProjects.length === 0 ? <EmptyState /> : <div className="command-table-wrap"><table className="command-table"><thead><tr><th>Project</th><th>State</th><th>Stage</th><th>Risk</th><th>Updated</th></tr></thead><tbody>{atRiskProjects.slice(0, 4).map((project) => <tr key={project.id}><td><strong>{project.name}</strong><span>{project.project_code}</span></td><td>{unavailable(project.state)}</td><td>{unavailable(project.current_stage)}</td><td><span className={`command-severity ${severityClass(project.risk_level)}`}>{project.risk_score == null ? 'Not available' : `${project.risk_score.toFixed(0)} · ${project.risk_level ?? 'Unclassified'}`}</span></td><td>{formatDate(project.updated_at)}</td></tr>)}</tbody></table></div>}</article>
+            <article className="command-panel command-system-panel"><div className="command-panel-heading"><div><span className="command-overline">Platform health</span><h2>System status</h2></div><span className="command-live-dot" /> </div><div className="command-health-grid"><div><Database size={17} /><span>Data pipeline</span><strong>{summary ? 'Operational' : 'Not available'}</strong></div><div><Activity size={17} /><span>AI models</span><strong>{model ? (model.trained ? 'Operational' : 'Not trained') : 'Not available'}</strong></div><div><MapPinned size={17} /><span>Map services</span><strong>{projects.length ? 'Operational' : 'Not available'}</strong></div></div><div className="command-panel-foot">{lastRefresh ? `Last verified ${lastRefresh.toLocaleTimeString('en-IN')}` : 'Awaiting verification'}</div></article>
           </section>
         </>
       )}

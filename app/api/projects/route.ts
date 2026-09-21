@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { demoProjects } from '../_demo-data';
+import { getImportedProjects } from '../../../lib/importedProjects';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  let list = [...demoProjects];
+  let list = [...demoProjects, ...getImportedProjects()];
 
   const state = searchParams.get('state');
   const district = searchParams.get('district');

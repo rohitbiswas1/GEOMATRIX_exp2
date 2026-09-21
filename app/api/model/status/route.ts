@@ -1,9 +1,19 @@
 import { NextResponse } from 'next/server';
 
+function backendUrl() {
+  return (process.env.MODEL_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
+}
+
 export async function GET() {
-  return NextResponse.json({
-    trained: false,
-    algorithm: 'RandomForest',
-    message: 'Model not trained — using demo mode with local project data only.',
-  });
+  try {
+    const response = await fetch(`${backendUrl()}/api/model/status`, { cache: 'no-store' });
+    const payload = await response.json();
+    return NextResponse.json(payload, { status: response.status });
+  } catch {
+    return NextResponse.json({
+      trained: false,
+      algorithm: 'RandomForest',
+      message: 'Model backend is unavailable. Start the FastAPI backend to view model status.',
+    }, { status: 503 });
+  }
 }

@@ -332,7 +332,7 @@ export default function Projects() {
                 <input
                   className="filter-select"
                   style={{ flex: 1, border: 'none', background: 'transparent', padding: '6px 0', fontSize: 13, outline: 'none' }}
-                  placeholder="Search project ID, name, district, authority…"
+                  placeholder="Search projects…"
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                 />
@@ -440,7 +440,9 @@ export default function Projects() {
                         <td>
                           <span className="risk" style={p.compensation_status === 'Pending'
                             ? { background: 'var(--red-bg)', color: 'var(--red-text)', border: '1px solid rgba(196,61,61,.2)' }
-                            : { background: 'var(--green-bg)', color: 'var(--green-text)', border: '1px solid rgba(22,132,91,.2)' }
+                            : p.compensation_status === 'Partial' || p.compensation_status === 'In Progress'
+                              ? { background: 'var(--amber-bg)', color: 'var(--amber-text)', border: '1px solid rgba(202,138,4,.25)' }
+                              : { background: 'var(--green-bg)', color: 'var(--green-text)', border: '1px solid rgba(22,132,91,.2)' }
                           }>
                             {p.compensation_status ?? '—'}
                           </span>

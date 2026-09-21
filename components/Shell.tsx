@@ -17,7 +17,6 @@ import {
   Moon,
   Laptop,
   Clock,
-  ChevronDown,
   Cpu
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -38,22 +37,11 @@ function formatIndiaDateTime(date: Date) {
   return `${values.day} ${values.month} ${values.year} · ${values.hour}:${values.minute} IST`;
 }
 
-const ROLES = [
-  { id: 'national', label: 'National Administrator', scope: 'All states & districts' },
-  { id: 'state', label: 'State Officer', scope: 'West Bengal' },
-  { id: 'district', label: 'District Officer', scope: 'Malda district' },
-  { id: 'project', label: 'Project Officer', scope: 'Assigned projects' },
-  { id: 'auditor', label: 'Auditor / Read-only', scope: 'Read-only access' },
-] as const;
-type RoleId = typeof ROLES[number]['id'];
-
 export function Shell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const router = useRouter();
   const [q, setQ] = useState('');
   const [themeMode, setThemeMode] = useState<ThemeMode>('dark');
-  const [roleId, setRoleId] = useState<RoleId>('national');
-  const [roleOpen, setRoleOpen] = useState(false);
   const [userInfo, setUserInfo] = useState<{ role?: string; email?: string } | null>(null);
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
   const [systemStatus, setSystemStatus] = useState<'checking' | 'operational' | 'degraded'>('checking');
@@ -72,12 +60,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
     }
   }, [login, router]);
 
-  // Restore saved role
-  useEffect(() => {
-    const savedRole = sessionStorage.getItem('geomatrix-role') as RoleId | null;
-    if (savedRole && ROLES.find(r => r.id === savedRole)) setRoleId(savedRole);
-  }, []);
-
   useEffect(() => {
     setCurrentTime(new Date());
     const timer = window.setInterval(() => setCurrentTime(new Date()), 1000);
@@ -86,9 +68,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let active = true;
+    const apiBase = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '');
     Promise.all([
-      fetch('/api/projects/dashboard-summary', { cache: 'no-store' }),
-      fetch('/api/alerts/summary', { cache: 'no-store' }),
+      fetch(`${apiBase}/api/projects/dashboard-summary`, { cache: 'no-store' }),
+      fetch(`${apiBase}/api/alerts/summary`, { cache: 'no-store' }),
     ])
       .then(async ([summaryResponse, alertsResponse]) => {
         if (!summaryResponse.ok || !alertsResponse.ok) throw new Error('Service health check failed');
@@ -104,12 +87,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
       });
     return () => { active = false; };
   }, []);
-
-  function switchRole(id: RoleId) {
-    setRoleId(id);
-    setRoleOpen(false);
-    sessionStorage.setItem('geomatrix-role', id);
-  }
 
   // Theme synchronization - default to light
   useEffect(() => {
@@ -190,39 +167,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
         </nav>
 
         <div className="sidebottom">
-          {/* Role Switcher */}
-          <div style={{ marginBottom: 10, position: 'relative' }}>
-            <button
-              onClick={() => setRoleOpen(o => !o)}
-              style={{
-                width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)',
-                borderRadius: 6, padding: '8px 10px', cursor: 'pointer', display: 'flex',
-                alignItems: 'center', justifyContent: 'space-between', color: '#94a3b8', fontSize: 13
-              }}
-            >
-              <span>
-                <div style={{ fontWeight: 700, color: '#e2e8f0', fontSize: 13, marginBottom: 1 }}>
-                  {ROLES.find(r => r.id === roleId)?.label}
-                </div>
-                <div style={{ fontSize: 11.5, color: '#94a3b8' }}>{ROLES.find(r => r.id === roleId)?.scope}</div>
-              </span>
-              <ChevronDown size={13} style={{ transform: roleOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0 }} />
-            </button>
-            {roleOpen && (
-              <div style={{ position: 'absolute', bottom: '105%', left: 0, right: 0, background: 'var(--navy-mid,#0b2547)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 8, overflow: 'hidden', zIndex: 50, boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
-                {ROLES.map(r => (
-                  <button key={r.id} onClick={() => switchRole(r.id)} style={{
-                    width: '100%', textAlign: 'left', padding: '9px 12px', background: r.id === roleId ? 'rgba(37,99,235,0.2)' : 'transparent',
-                    border: 'none', cursor: 'pointer', borderBottom: '1px solid rgba(255,255,255,0.06)', color: r.id === roleId ? '#60a5fa' : '#94a3b8',
-                  }}>
-                    <div style={{ fontWeight: 700, fontSize: 13 }}>{r.label}</div>
-                    <div style={{ fontSize: 11.5, opacity: 0.85 }}>{r.scope}</div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
           <div className="userline">
             <div>
               <b style={{ fontSize: 13 }}>{userInfo?.role || 'Administrator'}</b>
@@ -230,7 +174,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
             </div>
             <ShieldCheck size={16} color="#60a5fa" />
           </div>
-          <button className="btn" style={{ marginTop: 12, width: '100%' }} onClick={logout}>
+          <button className="btn sidebar-logout" onClick={logout}>
             <LogOut size={13} /> Logout
           </button>
         </div>

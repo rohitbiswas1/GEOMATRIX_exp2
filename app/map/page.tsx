@@ -1,350 +1,457 @@
-'use client';
+"use client";
 
-import { useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
-import { Layers, Search, SlidersHorizontal, MapPin, AlertTriangle, ShieldCheck } from 'lucide-react';
-import { fetchProjects, fetchGeojson, ApiProject, GeoJsonFeatureCollection } from '../../lib/apiClient';
+import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { Layers, Search, SlidersHorizontal, MapPin } from "lucide-react";
+import { fetchProjects, ApiProject } from "../../lib/apiClient";
 
+type GoogleMaps = any;
 type GoogleMap = any;
 type GoogleMarker = any;
 
-function loadGoogleMaps(apiKey: string): Promise<any> {
+const STATE_CENTER_COORDS: Record<string, [number, number]> = {
+  "andhra pradesh": [15.9129, 79.74],
+  telangana: [18.1124, 79.0193],
+  odisha: [20.9517, 85.0985],
+  bihar: [25.0961, 85.3131],
+  punjab: [31.1471, 75.3412],
+  delhi: [28.7041, 77.1025],
+  gujarat: [22.2587, 71.1924],
+  karnataka: [15.3173, 75.7139],
+  "west bengal": [22.9868, 87.855],
+  maharashtra: [19.7515, 75.7139],
+  chhattisgarh: [21.2787, 81.8661],
+  uttarakhand: [30.0668, 79.0193],
+};
+
+function loadGoogleMaps(apiKey: string): Promise<GoogleMaps> {
   return new Promise((resolve, reject) => {
-    const w = window as any;
-    if (w.google?.maps) return resolve(w.google.maps);
-    const existing = document.querySelector('script[data-geomatrix-google-maps="true"]') as HTMLScriptElement | null;
+    const browserWindow = window as any;
+    if (browserWindow.google?.maps) return resolve(browserWindow.google.maps);
+    const existing = document.querySelector(
+      'script[data-geomatrix-google-maps="true"]',
+    ) as HTMLScriptElement | null;
     if (existing) {
-      existing.addEventListener('load', () => resolve(w.google.maps));
-      existing.addEventListener('error', reject);
+      existing.addEventListener("load", () =>
+        resolve(browserWindow.google.maps),
+      );
+      existing.addEventListener("error", reject);
       return;
     }
-    const script = document.createElement('script');
+    const script = document.createElement("script");
     script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&v=weekly`;
     script.async = true;
     script.defer = true;
-    script.dataset.geomatrixGoogleMaps = 'true';
-    script.onload = () => (w.google?.maps ? resolve(w.google.maps) : reject(new Error('Google Maps API did not initialize')));
-    script.onerror = () => reject(new Error('Unable to load Google Maps'));
+    script.dataset.geomatrixGoogleMaps = "true";
+    script.onload = () =>
+      browserWindow.google?.maps
+        ? resolve(browserWindow.google.maps)
+        : reject(new Error("Google Maps API did not initialize"));
+    script.onerror = () => reject(new Error("Unable to load Google Maps"));
     document.head.appendChild(script);
   });
 }
 
-const STATE_CENTER_COORDS: Record<string, [number, number]> = {
-  'andhra pradesh': [15.9129, 79.7400],
-  'telangana': [18.1124, 79.0193],
-  'odisha': [20.9517, 85.0985],
-  'bihar': [25.0961, 85.3131],
-  'punjab': [31.1471, 75.3412],
-  'delhi': [28.7041, 77.1025],
-  'gujarat': [22.2587, 71.1924],
-  'karnataka': [15.3173, 75.7139],
-  'west bengal': [22.9868, 87.8550],
-  'maharashtra': [19.7515, 75.7139],
-  'chhattisgarh': [21.2787, 81.8661],
-  'uttarakhand': [30.0668, 79.0193],
-};
-
 function getRiskColor(level?: string, score?: number): string {
-  const lvl = (level || '').toLowerCase();
-  if (lvl === 'critical' || (score ?? 0) >= 75) return '#dc2626';
-  if (lvl === 'high' || (score ?? 0) >= 50) return '#ea580c';
-  if (lvl === 'medium' || (score ?? 0) >= 25) return '#ca8a04';
-  return '#16a34a';
+  const riskLevel = (level || "").toLowerCase();
+  if (riskLevel === "critical" || (score ?? 0) >= 75) return "#dc2626";
+  if (riskLevel === "high" || (score ?? 0) >= 50) return "#ea580c";
+  if (riskLevel === "medium" || (score ?? 0) >= 25) return "#ca8a04";
+  return "#16a34a";
+}
+
+function projectCoords(project: ApiProject, index: number): [number, number] {
+  if (project.latitude && project.longitude && project.latitude !== 0)
+    return [project.latitude, project.longitude];
+  const coords = STATE_CENTER_COORDS[(project.state || "").toLowerCase()] || [
+    20.5937, 78.9629,
+  ];
+  return [
+    coords[0] + ((index % 5) - 2) * 0.12,
+    coords[1] + ((Math.floor(index / 5) % 5) - 2) * 0.12,
+  ];
+}
+
+function googlePlaceUrl(project: ApiProject) {
+  const [lat, lng] = projectCoords(project, 0);
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lat},${lng}`)}`;
+}
+
+function googleStreetViewUrl(project: ApiProject) {
+  const [lat, lng] = projectCoords(project, 0);
+  return `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${encodeURIComponent(`${lat},${lng}`)}`;
 }
 
 export default function MapPage() {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<GoogleMap>(null);
   const markersRef = useRef<GoogleMarker[]>([]);
-
   const [dbProjects, setDbProjects] = useState<ApiProject[]>([]);
-  const [geoFeatures, setGeoFeatures] = useState<GeoJsonFeatureCollection['features']>([]);
-  const [selectedProject, setSelectedProject] = useState<ApiProject | null>(null);
-  
-  const [searchQuery, setSearchQuery] = useState('');
-  const [stateFilter, setStateFilter] = useState('All');
-  const [riskFilter, setRiskFilter] = useState('All');
-
+  const [selectedProject, setSelectedProject] = useState<ApiProject | null>(
+    null,
+  );
+  const [searchQuery, setSearchQuery] = useState("");
+  const [stateFilter, setStateFilter] = useState("All");
+  const [riskFilter, setRiskFilter] = useState("All");
   const [mapReady, setMapReady] = useState(false);
   const [mapFailed, setMapFailed] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [projectsLoaded, setProjectsLoaded] = useState(false);
 
-  // Load real projects & geojson from FastAPI backend
   useEffect(() => {
-    async function loadData() {
+    let active = true;
+    (async () => {
       try {
-        const [projList, geoData] = await Promise.all([
-          fetchProjects(),
-          fetchGeojson(),
-        ]);
-        setDbProjects(projList);
-        setGeoFeatures(geoData?.features || []);
-      } catch (err) {
-        console.error('Failed to load map data from backend:', err);
+        const projects = await fetchProjects();
+        if (active) setDbProjects(projects);
+      } catch (error) {
+        console.error("Failed to load map data:", error);
       } finally {
-        setLoading(false);
+        if (active) setProjectsLoaded(true);
       }
-    }
-    loadData();
-  }, []);
-
-  // Initialize Google Maps if API key is present
-  useEffect(() => {
-    let cancelled = false;
-    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-
-    async function initGoogleMap() {
-      if (!mapContainerRef.current || mapRef.current || !apiKey) {
-        setMapFailed(true);
-        return;
-      }
-      try {
-        const googleMaps = await loadGoogleMaps(apiKey);
-        if (cancelled || !mapContainerRef.current) return;
-
-        const map = new googleMaps.Map(mapContainerRef.current, {
-          center: { lat: 21.0, lng: 79.0 },
-          zoom: 5,
-          mapTypeControl: true,
-          fullscreenControl: true,
-          zoomControl: true,
-        });
-
-        mapRef.current = map;
-        setMapReady(true);
-      } catch {
-        if (!cancelled) setMapFailed(true);
-      }
-    }
-
-    initGoogleMap();
+    })();
     return () => {
-      cancelled = true;
+      active = false;
     };
   }, []);
 
-  // Update Google Maps markers when projects/filters change
   useEffect(() => {
-    const g = (typeof window !== 'undefined' ? window as any : {})?.google;
-    if (!mapRef.current || !g?.maps) return;
-    const googleMaps = g.maps;
-
-    // Clear old markers
-    markersRef.current.forEach((m) => m.setMap?.(null));
-    markersRef.current = [];
-
-    const filtered = dbProjects.filter((p) => {
-      const matchSearch = !searchQuery || p.name.toLowerCase().includes(searchQuery.toLowerCase()) || p.project_code.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchState = stateFilter === 'All' || p.state === stateFilter;
-      const matchRisk = riskFilter === 'All' || (p.risk_level || 'Low').toLowerCase() === riskFilter.toLowerCase();
-      return matchSearch && matchState && matchRisk;
-    });
-
-    markersRef.current = filtered.map((p, idx) => {
-      let lat = p.latitude;
-      let lng = p.longitude;
-      if (!lat || !lng || lat === 0) {
-        const st = (p.state || '').toLowerCase();
-        const coords = STATE_CENTER_COORDS[st] || [20.5937, 78.9629];
-        lat = coords[0] + ((idx % 5) - 2) * 0.12;
-        lng = coords[1] + (Math.floor(idx / 5) % 5 - 2) * 0.12;
+    let cancelled = false;
+    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+    if (!apiKey || !mapContainerRef.current) {
+      setMapFailed(true);
+      return () => {
+        cancelled = true;
+      };
+    }
+    (async () => {
+      try {
+        const googleMaps = await loadGoogleMaps(apiKey);
+        if (cancelled || !mapContainerRef.current || mapRef.current) return;
+        mapRef.current = new googleMaps.Map(mapContainerRef.current, {
+          center: { lat: 22.8, lng: 79.5 },
+          zoom: 5,
+          mapTypeControl: true,
+          mapTypeControlOptions: { mapTypeIds: ["roadmap", "satellite"] },
+          fullscreenControl: true,
+          streetViewControl: false,
+          zoomControl: true,
+        });
+        setMapReady(true);
+      } catch (error) {
+        console.error("Google Maps failed to load:", error);
+        if (!cancelled) setMapFailed(true);
       }
+    })();
+    return () => {
+      cancelled = true;
+      markersRef.current.forEach((marker) => marker.setMap?.(null));
+      mapRef.current = null;
+    };
+  }, []);
 
-      const color = getRiskColor(p.risk_level, p.risk_score);
+  const filteredProjects = useMemo(
+    () =>
+      dbProjects.filter((project) => {
+        const query = searchQuery.toLowerCase();
+        const matchSearch =
+          !query ||
+          project.name.toLowerCase().includes(query) ||
+          project.project_code.toLowerCase().includes(query);
+        const matchState =
+          stateFilter === "All" || project.state === stateFilter;
+        const matchRisk =
+          riskFilter === "All" ||
+          (project.risk_level || "Low").toLowerCase() ===
+            riskFilter.toLowerCase();
+        return matchSearch && matchState && matchRisk;
+      }),
+    [dbProjects, searchQuery, stateFilter, riskFilter],
+  );
+
+  useEffect(() => {
+    const googleMaps = (window as any).google?.maps;
+    if (!googleMaps || !mapRef.current) return;
+    markersRef.current.forEach((marker) => marker.setMap?.(null));
+    markersRef.current = filteredProjects.map((project, index) => {
+      const [lat, lng] = projectCoords(project, index);
+      const color = getRiskColor(project.risk_level, project.risk_score);
       const marker = new googleMaps.Marker({
         map: mapRef.current,
         position: { lat, lng },
-        title: p.name,
+        title: project.name,
         icon: {
           path: googleMaps.SymbolPath.CIRCLE,
           scale: 9,
           fillColor: color,
           fillOpacity: 1,
-          strokeColor: '#ffffff',
+          strokeColor: "#ffffff",
           strokeWeight: 2,
         },
       });
-      marker.addListener('click', () => setSelectedProject(p));
+      marker.addListener("click", () => setSelectedProject(project));
       return marker;
     });
-  }, [dbProjects, searchQuery, stateFilter, riskFilter, mapReady]);
+  }, [filteredProjects, mapReady]);
 
-  const filteredProjects = dbProjects.filter((p) => {
-    const matchSearch = !searchQuery || p.name.toLowerCase().includes(searchQuery.toLowerCase()) || p.project_code.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchState = stateFilter === 'All' || p.state === stateFilter;
-    const matchRisk = riskFilter === 'All' || (p.risk_level || 'Low').toLowerCase() === riskFilter.toLowerCase();
-    return matchSearch && matchState && matchRisk;
-  });
-
-  const uniqueStates = Array.from(new Set(dbProjects.map((p) => p.state).filter(Boolean)));
-  const criticalCount = filteredProjects.filter((p) => (p.risk_level || '').toLowerCase() === 'critical').length;
-  const highCount = filteredProjects.filter((p) => (p.risk_level || '').toLowerCase() === 'high').length;
-  const totalLand = filteredProjects.reduce((acc, p) => acc + (p.land_required || 0), 0);
+  const uniqueStates = Array.from(
+    new Set(dbProjects.map((project) => project.state).filter(Boolean)),
+  );
+  const criticalCount = filteredProjects.filter(
+    (project) => (project.risk_level || "").toLowerCase() === "critical",
+  ).length;
+  const highCount = filteredProjects.filter(
+    (project) => (project.risk_level || "").toLowerCase() === "high",
+  ).length;
+  const totalLand = filteredProjects.reduce(
+    (total, project) => total + (project.land_required || 0),
+    0,
+  );
 
   return (
     <div className="page">
       <div className="maplayout">
-        <section className="mapbox" style={{ position: 'relative', overflow: 'hidden' }}>
-          {/* Main Map Container */}
-          <div ref={mapContainerRef} className="mapcanvas" style={{ width: '100%', height: '100%', minHeight: 520 }} />
-
-          {/* Fallback Interactive Spatial Map when Google Maps API key is not present */}
-          {(mapFailed || !process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY) && (
+        <section
+          className="mapbox"
+          style={{ position: "relative", overflow: "hidden" }}
+        >
+          <div
+            ref={mapContainerRef}
+            className="mapcanvas"
+            style={{
+              width: "100%",
+              height: "100%",
+              minHeight: 520,
+              background: "#e8f1e8",
+            }}
+          />
+          {mapFailed && (
             <div
               style={{
-                position: 'absolute',
+                position: "absolute",
                 inset: 0,
-                background: '#0f172a',
-                color: '#f8fafc',
-                display: 'flex',
-                flexDirection: 'column',
+                background: "#f8fafc",
+                color: "#0f172a",
+                display: "flex",
+                flexDirection: "column",
                 zIndex: 10,
               }}
             >
-              {/* Interactive Vector GIS Overlay */}
-              <div style={{ padding: '12px 16px', background: '#1e293b', borderBottom: '1px solid #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Layers size={18} style={{ color: '#38bdf8' }} />
-                  <span style={{ fontWeight: 600, fontSize: 13 }}>Spatial GIS Intelligence Grid</span>
+              <div
+                style={{
+                  padding: "12px 16px",
+                  background: "#e2e8f0",
+                  borderBottom: "1px solid #cbd5e1",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <Layers size={18} style={{ color: "#0284c7" }} />
+                  <span style={{ fontWeight: 600, fontSize: 13 }}>
+                    Google Maps configuration unavailable
+                  </span>
                 </div>
-                <span className="badge" style={{ background: '#0284c7', color: '#fff', fontSize: 11 }}>
-                  {filteredProjects.length} Projects Plotting Live
+                <span
+                  className="badge"
+                  style={{ background: "#0284c7", color: "#fff", fontSize: 11 }}
+                >
+                  Add a valid API key
                 </span>
               </div>
-
-              {/* Vector GIS Map Container */}
-              <div style={{ flex: 1, position: 'relative', background: 'radial-gradient(circle at 50% 50%, #1e293b 0%, #0f172a 100%)', overflow: 'auto', padding: 24 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16 }}>
-                  {filteredProjects.map((p) => {
-                    const color = getRiskColor(p.risk_level, p.risk_score);
-                    return (
-                      <div
-                        key={p.id}
-                        onClick={() => setSelectedProject(p)}
-                        style={{
-                          background: selectedProject?.id === p.id ? '#1e293b' : '#0f172a',
-                          border: `1.5px solid ${selectedProject?.id === p.id ? color : '#334155'}`,
-                          borderRadius: 8,
-                          padding: 14,
-                          cursor: 'pointer',
-                          transition: 'all 0.2s',
-                          boxShadow: selectedProject?.id === p.id ? `0 0 12px ${color}44` : 'none',
-                        }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>{p.project_code}</span>
-                          <span style={{ fontSize: 10, background: `${color}22`, color, border: `1px solid ${color}44`, padding: '2px 8px', borderRadius: 12, fontWeight: 700 }}>
-                            {p.risk_level || 'Low'} ({p.risk_score ?? 0})
-                          </span>
-                        </div>
-                        <h4 style={{ fontSize: 13, color: '#f8fafc', margin: '8px 0 4px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</h4>
-                        <div style={{ fontSize: 11, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <MapPin size={12} /> {p.state} {p.district ? `· ${p.district}` : ''}
-                        </div>
-                        <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#94a3b8', borderTop: '1px solid #1e293b', paddingTop: 8 }}>
-                          <span>Land: <b>{p.land_required} ha</b></span>
-                          <span>Stage: <b>{p.current_stage || 'Active'}</b></span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+              <div style={{ padding: 24 }}>
+                The Google Maps JavaScript API key is missing, invalid, or
+                restricted for this local origin.
               </div>
             </div>
           )}
-
-          {/* Project Details Popup */}
           {selectedProject && (
             <div
               style={{
-                position: 'absolute',
+                position: "absolute",
                 left: 18,
                 bottom: 18,
                 width: 310,
-                background: '#ffffff',
-                border: '1px solid var(--line)',
+                background: "#fff",
+                border: "1px solid var(--line)",
                 padding: 16,
                 borderRadius: 8,
-                boxShadow: '0 12px 30px rgba(0,0,0,0.18)',
+                boxShadow: "0 12px 30px rgba(0,0,0,0.18)",
                 zIndex: 100,
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
                 <span className="eyebrow">{selectedProject.project_code}</span>
-                <button onClick={() => setSelectedProject(null)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#64748b', fontWeight: 'bold' }}>✕</button>
+                <button
+                  onClick={() => setSelectedProject(null)}
+                  style={{
+                    border: "none",
+                    background: "none",
+                    cursor: "pointer",
+                    color: "#64748b",
+                    fontWeight: "bold",
+                  }}
+                >
+                  ✕
+                </button>
               </div>
-              <h3 style={{ fontSize: 14, margin: '6px 0 4px 0', color: '#0f172a' }}>{selectedProject.name}</h3>
-              <div className="sub" style={{ fontSize: 12, color: '#64748b' }}>
-                {selectedProject.state} {selectedProject.district ? `· ${selectedProject.district}` : ''}
+              <h3
+                style={{ fontSize: 14, margin: "6px 0 4px", color: "#0f172a" }}
+              >
+                {selectedProject.name}
+              </h3>
+              <div className="sub" style={{ fontSize: 12, color: "#64748b" }}>
+                {selectedProject.state}{" "}
+                {selectedProject.district
+                  ? `· ${selectedProject.district}`
+                  : ""}
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '12px 0', padding: '8px 12px', background: '#f8fafc', borderRadius: 6 }}>
-                <span className={`risk ${(selectedProject.risk_level || 'low').toLowerCase()}`}>
-                  {selectedProject.risk_level || 'Low'} ({selectedProject.risk_score ?? 0}/100)
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  margin: "12px 0",
+                  padding: "8px 12px",
+                  background: "#f8fafc",
+                  borderRadius: 6,
+                }}
+              >
+                <span
+                  className={`risk ${(selectedProject.risk_level || "low").toLowerCase()}`}
+                >
+                  {selectedProject.risk_level || "Low"} (
+                  {selectedProject.risk_score ?? 0}/100)
                 </span>
-                <span style={{ fontSize: 12, fontWeight: 600 }}>{selectedProject.authority}</span>
+                <span style={{ fontSize: 12, fontWeight: 600 }}>
+                  {selectedProject.authority}
+                </span>
               </div>
-              <div style={{ fontSize: 12, color: '#475569', marginBottom: 12 }}>
-                <div>Land Required: <b>{selectedProject.land_required} ha</b></div>
-                <div>Affected Families: <b>{selectedProject.affected_families}</b></div>
-                {selectedProject.primary_driver && <div style={{ color: '#dc2626', marginTop: 4 }}>Driver: {selectedProject.primary_driver}</div>}
+              <div style={{ fontSize: 12, color: "#475569", marginBottom: 12 }}>
+                <div>
+                  Land Required: <b>{selectedProject.land_required} ha</b>
+                </div>
+                <div>
+                  Affected Families: <b>{selectedProject.affected_families}</b>
+                </div>
+                {selectedProject.primary_driver && (
+                  <div style={{ color: "#dc2626", marginTop: 4 }}>
+                    Driver: {selectedProject.primary_driver}
+                  </div>
+                )}
               </div>
-              <Link className="btn primary" style={{ display: 'block', textAlign: 'center', width: '100%' }} href={`/projects/${selectedProject.id}`}>
-                View Deep-Dive Risk Analysis ➔
+              <Link
+                className="btn primary"
+                style={{ display: "block", textAlign: "center", width: "100%" }}
+                href={`/projects/${selectedProject.id}`}
+              >
+                View Deep-Dive Risk Analysis -&gt;
               </Link>
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <a
+                  className="btn"
+                  style={{ flex: 1, justifyContent: "center", fontSize: 11 }}
+                  href={googleStreetViewUrl(selectedProject)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Street View
+                </a>
+                <a
+                  className="btn"
+                  style={{ flex: 1, justifyContent: "center", fontSize: 11 }}
+                  href={googlePlaceUrl(selectedProject)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Place images
+                </a>
+              </div>
             </div>
           )}
-
-          <div style={{ position: 'absolute', left: 14, top: 14, zIndex: 90, background: '#fff', border: '1px solid var(--line)', borderRadius: 5, padding: '6px 10px', fontSize: 11, fontWeight: 600, boxShadow: '0 2px 8px #0001' }}>
-            GIS Spatial Map ({filteredProjects.length} Projects Active)
+          <div
+            style={{
+              position: "absolute",
+              left: 14,
+              top: 14,
+              zIndex: 90,
+              background: "#0b2547",
+              color: "#ffffff",
+              border: "1px solid #315b87",
+              borderRadius: 5,
+              padding: "7px 11px",
+              fontSize: 11,
+              fontWeight: 700,
+              boxShadow: "0 3px 10px rgba(15, 23, 42, 0.28)",
+            }}
+          >
+            Google GIS Map ({filteredProjects.length} Projects Active)
           </div>
         </section>
-
-        {/* Sidebar Controls & Summary */}
         <aside className="mapside">
           <div className="eyebrow">GIS Spatial Intelligence</div>
-          <h2 style={{ fontSize: 20, margin: '5px 0' }}>Spatial Risk Overview</h2>
-
-          <div className="search" style={{ maxWidth: 'none', margin: '14px 0' }}>
+          <h2 style={{ fontSize: 20, margin: "5px 0" }}>
+            Spatial Risk Overview
+          </h2>
+          <div
+            className="search"
+            style={{ maxWidth: "none", margin: "14px 0" }}
+          >
             <Search size={14} />
             <input
               placeholder="Search map projects..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(event) => setSearchQuery(event.target.value)}
             />
           </div>
-
           <div className="mapmetric">
-            <div>
+            <div className="mapmetric-total">
               <div className="muted">Total Projects</div>
-              <b>{filteredProjects.length}</b>
+              <b>{projectsLoaded ? filteredProjects.length : "Loading..."}</b>
             </div>
-            <div>
+            <div className="mapmetric-critical">
               <div className="muted">Critical</div>
-              <b style={{ color: '#dc2626' }}>{criticalCount}</b>
+              <b style={{ color: "#dc2626" }}>
+                {projectsLoaded ? criticalCount : "—"}
+              </b>
             </div>
-            <div>
+            <div className="mapmetric-high">
               <div className="muted">High-Risk</div>
-              <b style={{ color: '#ea580c' }}>{highCount}</b>
+              <b style={{ color: "#ea580c" }}>
+                {projectsLoaded ? highCount : "—"}
+              </b>
             </div>
-            <div>
+            <div className="mapmetric-area">
               <div className="muted">Affected Area</div>
-              <b>{totalLand.toLocaleString()} ha</b>
+              <b>{projectsLoaded ? `${totalLand.toLocaleString()} ha` : "—"}</b>
             </div>
           </div>
-
           <div className="panel" style={{ padding: 12, marginTop: 14 }}>
             <div className="paneltitle">
               <SlidersHorizontal size={13} /> Map Filters
             </div>
             <div className="form" style={{ marginTop: 10 }}>
-              <select value={stateFilter} onChange={(e) => setStateFilter(e.target.value)}>
+              <select
+                value={stateFilter}
+                onChange={(event) => setStateFilter(event.target.value)}
+              >
                 <option value="All">All States</option>
-                {uniqueStates.map((st) => (
-                  <option key={st} value={st}>{st}</option>
+                {uniqueStates.map((state) => (
+                  <option key={state} value={state}>
+                    {state}
+                  </option>
                 ))}
               </select>
-
-              <select value={riskFilter} onChange={(e) => setRiskFilter(e.target.value)}>
+              <select
+                value={riskFilter}
+                onChange={(event) => setRiskFilter(event.target.value)}
+              >
                 <option value="All">All Risk Levels</option>
                 <option value="Critical">Critical</option>
                 <option value="High">High Risk</option>
@@ -353,21 +460,24 @@ export default function MapPage() {
               </select>
             </div>
           </div>
-
           <div style={{ marginTop: 18 }}>
             <div className="paneltitle">Risk Legend</div>
             <div className="legend" style={{ marginTop: 8 }}>
               <div className="legendrow">
-                <span className="legenddot" style={{ background: '#dc2626' }} /> Critical Risk (Score &gt;= 75)
+                <span className="legenddot" style={{ background: "#dc2626" }} />{" "}
+                Critical Risk (Score &gt;= 75)
               </div>
               <div className="legendrow">
-                <span className="legenddot" style={{ background: '#ea580c' }} /> High Risk (Score 50 - 74)
+                <span className="legenddot" style={{ background: "#ea580c" }} />{" "}
+                High Risk (Score 50 - 74)
               </div>
               <div className="legendrow">
-                <span className="legenddot" style={{ background: '#ca8a04' }} /> Medium Risk (Score 25 - 49)
+                <span className="legenddot" style={{ background: "#ca8a04" }} />{" "}
+                Medium Risk (Score 25 - 49)
               </div>
               <div className="legendrow">
-                <span className="legenddot" style={{ background: '#16a34a' }} /> Low Risk (Score &lt; 25)
+                <span className="legenddot" style={{ background: "#16a34a" }} />{" "}
+                Low Risk (Score &lt; 25)
               </div>
             </div>
           </div>
