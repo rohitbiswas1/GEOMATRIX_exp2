@@ -14,6 +14,16 @@
 
 ---
 
+## Live Demo
+
+🚀 **Live Application:** https://geomatrix-exp2.vercel.app/login
+
+Open the deployed GEOMATRIX application to explore the Command Center, project management, GIS risk map, analytics, alerts, reports, data management, and model intelligence features.
+
+> **Note:** Some features depend on the production API, database, model services, and configured Google/Gemini credentials.
+
+---
+
 ## Overview
 
 Land acquisition is a critical dependency for large infrastructure programs. Delays can arise from objections, compensation, legal cases, rehabilitation and resettlement, incomplete documentation, and pending clearances.
